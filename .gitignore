@@ -1,0 +1,8 @@
+*.LST
+*.OBJ
+*.A51
+*.hex
+*.uvgui.fly
+*.uvgui.flay
+*.bak
+*.uvgui_fly.bak
