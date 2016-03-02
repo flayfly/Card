@@ -25,9 +25,10 @@
 #define TX_ADR_WIDTH    5   										// RF收发地址共5 bytes 
 #define TX_PLOAD_WIDTH  9  											// 数据包长度为20 bytes
 
-uint8_t key[5] = {1,1,7,0,8};										//发卡密码：tag([4],[8])；card（[5],[7]）
+uint8_t key[5] = {1,1,7,0,8};										//发卡密码：tag([4],[8])=(1,8)
+uint8_t tag_key[5] = {2,2,8,1,9};								//tag密码：card([5],[7])=(2,1)
 
-uint8_t const TX_ADDRESS[TX_ADR_WIDTH]  = {0x34,0x56,0x78,0x90,0x15}; // 定义RF收发地址
+uint8_t const TX_ADDRESS[TX_ADR_WIDTH]  = {0x34,0x56,0x78,0x90,0x14}; // 定义RF收发地址
 
 
 uint8_t data id_buf[TX_PLOAD_WIDTH]={0xff, 0x01, 0x02, 0x03, 0x04, 0x05};
@@ -38,7 +39,7 @@ sbit	TX_DS	=sta^5;
 sbit	MAX_RT	=sta^4;
 
 uint8_t eepromdata;
-uint8_t uart_rx_buf[15],radio_rx_buf[15],uart_rx_num = 0;
+uint8_t uart_rx_buf[11],radio_rx_buf[11],uart_rx_num = 0;
 uint8_t radio_tx_flag = 0,uart_tx_flag = 0;
 
 uint8_t i = 0;
@@ -261,6 +262,11 @@ void RF_IRQ(void) interrupt INTERRUPT_RFIRQ
 			
 			uart_tx_flag = 1;
 		}
+		
+		if(MAX_RT)
+	{
+			SPI_RW_Reg(FLUSH_TX,0);							// 清除TX的FIFO !!!达到最大重传次数，清空TX——buffer，确保不会PID加一后，被继续发送
+  }
 	
 		SPI_RW_Reg(WRITE_REG+STATUS,0x70);														// 清除所有中断标志 
 }
@@ -332,7 +338,7 @@ void main(void)
 				sta = 0;
 //				LED9 = !LED9;
 //			RFCE=0;																				//关闭RF
-				if(radio_rx_buf[5] == key[1] && radio_rx_buf[7] == key[3])
+				if(radio_rx_buf[5] == tag_key[1] && radio_rx_buf[7] == tag_key[3])
 				{
 						uart_putchar(radio_rx_buf[0]);
 						uart_putchar(radio_rx_buf[1]);
@@ -345,6 +351,11 @@ void main(void)
 //					uart_putchar(radio_rx_buf[8]);
 						uart_putchar(0x0d);												//\r
 						uart_putchar(0x0a);												//\n
+				}
+				
+				for(i = 0;i < 11;i++)
+				{
+						radio_rx_buf[i] = '\0';
 				}
 		}
 						

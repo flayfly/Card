@@ -1,0 +1,185 @@
+C51 COMPILER V9.52.0.0   LIB_EEPROM255                                                     02/25/2016 16:04:10 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE LIB_EEPROM255
+OBJECT MODULE PLACED IN lib_eeprom255.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE lib_eeprom255.c COMPACT OMF2 BROWSE INCDIR(.\air LCD remote;C:\Nordic Semic
+                    -onductor\nRFgo SDK 2.3.0.10040\source_code\compiler\c51;C:\Nordic Semiconductor\nRFgo SDK 2.3.0.10040\source_code\compil
+                    -er\common;C:\Nordic Semiconductor\nRFgo SDK 2.3.0.10040\source_code\hal\nrf24le1) DEBUG TABS(2)
+
+line level    source
+
+   1          /* Copyright (c) 2009 Nordic Semiconductor. All Rights Reserved.
+   2           *
+   3           * The information contained herein is confidential property of Nordic 
+   4           * Semiconductor ASA.Terms and conditions of usage are described in detail 
+   5           * in NORDIC SEMICONDUCTOR STANDARD SOFTWARE LICENSE AGREEMENT. 
+   6           *
+   7           * Licensees are granted free, non-transferable use of the information. NO
+   8           * WARRENTY of ANY KIND is provided. This heading must NOT be removed from
+   9           * the file.
+  10           *              
+  11           * $LastChangedRevision: 133 $
+  12           */ 
+  13          
+  14          /** @file
+  15           * @brief Implementation of EEPROM library (lib_eeprom255) in nRF24LE1.
+  16           */
+  17           
+  18          //#ifndef LIB_EEPROM255_H__
+  19          //#define LIB_EEPROM255_H__
+  20          
+  21          #include "nrf24le1.h"
+  22          #include "hal_flash.h"
+  23          
+  24          #define BK_BYTE 255
+  25          #define PAGE_0_XDATA 0xFA00
+  26          #define PAGE_1_XDATA 0xFB00
+  27          #define PAGE_0_FLASH_PN 32
+  28          #define PAGE_1_FLASH_PN 33
+  29           
+  30          void lib_eeprom255_byte_write(uint8_t adr, uint8_t dat)
+  31          {
+  32   1        uint8_t xdata i;
+  33   1        uint16_t xdata flash_dst_pn, xdata_dst_adr, flash_old_pn, xdata_old_adr; 
+  34   1        
+  35   1        if(*((uint8_t xdata *)(PAGE_0_XDATA + BK_BYTE)) == 0xff)
+  36   1        {
+  37   2          flash_dst_pn = PAGE_0_FLASH_PN;
+  38   2          xdata_dst_adr = PAGE_0_XDATA;  
+  39   2          flash_old_pn = PAGE_1_FLASH_PN;
+  40   2          xdata_old_adr = PAGE_1_XDATA;   
+  41   2        }
+  42   1        else
+  43   1        {
+  44   2          flash_dst_pn = PAGE_1_FLASH_PN;
+  45   2          xdata_dst_adr = PAGE_1_XDATA;  
+  46   2          flash_old_pn = PAGE_0_FLASH_PN;
+  47   2          xdata_old_adr = PAGE_0_XDATA;   
+  48   2        }
+  49   1        
+  50   1        if((*((uint8_t xdata *)(xdata_old_adr + adr))) != dat)
+  51   1        {
+  52   2          hal_flash_page_erase(flash_dst_pn);
+  53   2          
+C51 COMPILER V9.52.0.0   LIB_EEPROM255                                                     02/25/2016 16:04:10 PAGE 2   
+
+  54   2          PCON &= ~(1 << 4);
+  55   2          for(i = 0; i < 255; i++)
+  56   2          {
+  57   3            if(i == adr)
+  58   3            {
+  59   4              hal_flash_byte_write(xdata_dst_adr + adr, dat);
+  60   4            }
+  61   3            else
+  62   3            {
+  63   4              hal_flash_byte_write(xdata_dst_adr + i, *((uint8_t xdata *)(xdata_old_adr + i)));
+  64   4            }
+  65   3          }
+  66   2        
+  67   2          hal_flash_byte_write(xdata_dst_adr + BK_BYTE, 0);
+  68   2          hal_flash_page_erase(flash_old_pn);
+  69   2        }
+  70   1      }
+  71          
+  72          uint8_t lib_eeprom255_byte_read(uint8_t adr)
+  73          {
+  74   1        if(*((uint8_t xdata *)(PAGE_0_XDATA + BK_BYTE)) == 0)
+  75   1        {
+  76   2          return (*((uint8_t xdata *)(PAGE_0_XDATA + adr)));
+  77   2        }
+  78   1        else
+  79   1        {
+  80   2          return (*((uint8_t xdata *)(PAGE_1_XDATA + adr)));
+  81   2        }
+  82   1      }
+  83          
+  84          void lib_eeprom255_bytes_write(uint8_t adr, uint8_t *src, uint8_t n)
+  85          {
+  86   1        uint8_t xdata i;
+  87   1        uint16_t xdata flash_dst_pn, xdata_dst_adr, flash_old_pn, xdata_old_adr; 
+  88   1        
+  89   1        if(*((uint8_t xdata *)(PAGE_0_XDATA + BK_BYTE)) == 0xff)
+  90   1        {
+  91   2          flash_dst_pn = PAGE_0_FLASH_PN;
+  92   2          xdata_dst_adr = PAGE_0_XDATA;  
+  93   2          flash_old_pn = PAGE_1_FLASH_PN;
+  94   2          xdata_old_adr = PAGE_1_XDATA;   
+  95   2        }
+  96   1        else
+  97   1        {
+  98   2          flash_dst_pn = PAGE_1_FLASH_PN;
+  99   2          xdata_dst_adr = PAGE_1_XDATA;  
+ 100   2          flash_old_pn = PAGE_0_FLASH_PN;
+ 101   2          xdata_old_adr = PAGE_0_XDATA;   
+ 102   2        }
+ 103   1      
+ 104   1        for(i = 0; i < n; i++)
+ 105   1        {
+ 106   2          if((*((uint8_t xdata *)(xdata_old_adr + adr + i))) != src[i])
+ 107   2          {
+ 108   3            break;
+ 109   3          }
+ 110   2        }
+ 111   1      
+ 112   1        if(i < n)
+ 113   1        {
+ 114   2          hal_flash_page_erase(flash_dst_pn);
+ 115   2          for(i = 0; i < 255; i++)
+C51 COMPILER V9.52.0.0   LIB_EEPROM255                                                     02/25/2016 16:04:10 PAGE 3   
+
+ 116   2          {
+ 117   3            if(i >= adr && i < (adr + n))
+ 118   3            {
+ 119   4              hal_flash_byte_write(xdata_dst_adr + i, src[i - adr]);
+ 120   4            }
+ 121   3            else
+ 122   3            {
+ 123   4              hal_flash_byte_write(xdata_dst_adr + i, *((uint8_t xdata *)(xdata_old_adr + i)));
+ 124   4            }
+ 125   3          }
+ 126   2        
+ 127   2          hal_flash_byte_write(xdata_dst_adr + BK_BYTE, 0);
+ 128   2          hal_flash_page_erase(flash_old_pn);
+ 129   2        }
+ 130   1      }
+ 131          
+ 132          void lib_eeprom255_bytes_read(uint8_t adr, uint8_t *dst, uint8_t n)
+ 133          {
+ 134   1        uint8_t xdata i;
+ 135   1        uint16_t xdata xdata_src_adr;
+ 136   1      
+ 137   1        if(*((uint8_t xdata *)(PAGE_0_XDATA + BK_BYTE)) == 0)
+ 138   1        {
+ 139   2          xdata_src_adr = PAGE_0_XDATA;
+ 140   2        }
+ 141   1        else
+ 142   1        {
+ 143   2          xdata_src_adr = PAGE_1_XDATA;
+ 144   2        }
+ 145   1        
+ 146   1        for(i = 0; i < n; i++)
+ 147   1        {
+ 148   2          dst[i] = *((uint8_t xdata *)(xdata_src_adr + adr + i));
+ 149   2        }  
+ 150   1      }
+ 151          
+ 152          //#endif // LIB_EEPROM255_H__
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    716    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----      21
+   PDATA SIZE       =   ----      12
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

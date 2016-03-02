@@ -1,0 +1,45 @@
+### uVision2 Project, (C) Keil Software
+### Do not modify !
+
+ cExt (*.c)
+ aExt (*.s*; *.src; *.a*)
+ oExt (*.obj)
+ lExt (*.lib)
+ tExt (*.txt; *.h; *.inc)
+ pExt (*.plm)
+ CppX (*.cpp)
+ DaveTm { 0,0,0,0,0,0,0,0 }
+
+Target (Target 1), 0x0000 // Tools: 'MCS-51'
+GRPOPT 1,(Source Group 1),1,0,0
+
+OPTFFF 1,1,2,0,0,0,0,0,<.\STARTUP.A51><STARTUP.A51> 
+OPTFFF 1,2,1,637534211,0,1,1,0,<.\Main.c><Main.c> { 44,0,0,0,2,0,0,0,3,0,0,0,255,255,255,255,255,255,255,255,252,255,255,255,226,255,255,255,88,0,0,0,88,0,0,0,234,2,0,0,152,1,0,0 }
+
+ExtF <E:\RFID·¢Éä\API.H> 55,65,0,{ 44,0,0,0,0,0,0,0,1,0,0,0,255,255,255,255,255,255,255,255,252,255,255,255,233,255,255,255,110,0,0,0,110,0,0,0,244,2,0,0,164,1,0,0 }
+
+TARGOPT 1, (Target 1)
+ CLK51=16000000
+  OPTTT 1,1,1,0
+  OPTHX 0,65535,0,0,0
+  OPTLX 120,65,8,<.\>
+  OPTOX 16
+  OPTLT 1,1,1,0,1,1,0,1,0,0,0,0
+  OPTXL 1,1,1,1,1,1,1,0,0
+  OPTFL 1,0,1
+  OPTAX 5
+  OPTBL 0,(8051 Instruction Set Manual)<DATASHTS\INTEL\ISM51.PDF>
+  OPTBL 1,(Datasheet)<DATASHTS\NORDIC\nRF24E1.pdf>
+  OPTDL (S8051.DLL)()(DP51.DLL)(-pRF24E1)(S8051.DLL)()(TP51.DLL)(-pRF24E1)
+  OPTDBG 44029,0,()()()()()()()()()() (BIN\MON51.DLL)()()()
+  OPTKEY 0,(DLGDC51)((94=150,100,510,379,0)(80=-1,-1,-1,-1,0)(81=-1,-1,-1,-1,0)(82=-1,-1,-1,-1,0)(83=-1,-1,-1,-1,0)(1200=150,109,344,295,0)(90=790,85,988,325,0)(91=-1,-1,-1,-1,0))
+  OPTMM 1,0,(d:0x0000)
+  OPTMM 2,0,(D:0)
+  OPTMM 3,0,(I:0)
+  OPTMM 4,0,(X:0X0000)
+  OPTSY 0,0,(*)
+  OPTDF 0x86
+  OPTLE <>
+  OPTLC <>
+EndOpt
+

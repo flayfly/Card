@@ -1,0 +1,407 @@
+C51 COMPILER V9.52.0.0   MAIN                                                              03/02/2016 17:09:11 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE MAIN
+OBJECT MODULE PLACED IN Main.OBJ
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE Main.c COMPACT OMF2 BROWSE INCDIR(.\air LCD remote;C:\Nordic Semiconductor\
+                    -nRFgo SDK 2.3.0.10040\source_code\compiler\c51;C:\Nordic Semiconductor\nRFgo SDK 2.3.0.10040\source_code\compiler\common
+                    -;C:\Nordic Semiconductor\nRFgo SDK 2.3.0.10040\source_code\hal\nrf24le1) DEBUG TABS(2)
+
+line level    source
+
+   1          /*********************************************************************
+   2          ¹¦ÄÜ:
+   3            RFID TARGET·¢Éä³ÌÐò
+   4          ËµÃ÷:
+   5            ±¾³ÌÐò²ÉÓÃ¶¨Ê±2Ãë·¢ÉäIDÒ»´Î,·¢ÉäÍê±Ï½øÈëµÍ¹¦ºÄÄ£Ê½,µÍ¹¦ºÄµçÁ÷3uA
+   6            ID³¤¶ÈÎª6 byte
+   7          **********************************************************************/
+   8          
+   9          
+  10          #include <Nordic\reg24le1.h>
+  11          #include <stdint.h>
+  12          #include "API.h"
+  13          #include "hal_delay.h"
+  14          //#include "lib_eeprom255.h"
+  15          
+  16          //#include "hal_uart.h"
+  17          //#include "hal_clk.h"
+  18          
+  19          #define LED9 P06
+  20          #define LED
+  21          
+  22          #define INTERRUPT_RFIRQ 9
+  23          #define INTERRUPT_TICK  13  
+  24          
+  25          #define TX_ADR_WIDTH    5                       // RFÊÕ·¢µØÖ·¹²5 bytes 
+  26          #define TX_PLOAD_WIDTH  9                       // Êý¾Ý°ü³¤¶ÈÎª20 bytes
+  27          
+  28          uint8_t key[5] = {1,1,7,0,8};                   //·¢¿¨ÃÜÂë£ºtag([4],[8])=(1,8)
+  29          uint8_t tag_key[5] = {2,2,8,1,9};               //tagÃÜÂë£ºcard([5],[7])=(2,1)
+  30          
+  31          uint8_t const TX_ADDRESS[TX_ADR_WIDTH]  = {0x34,0x56,0x78,0x90,0x14}; // ¶¨ÒåRFÊÕ·¢µØÖ·
+  32          
+  33          
+  34          uint8_t data id_buf[TX_PLOAD_WIDTH]={0xff, 0x01, 0x02, 0x03, 0x04, 0x05};
+  35          
+  36          uint8_t bdata sta;
+  37          sbit  RX_DR =sta^6;
+  38          sbit  TX_DS =sta^5;
+  39          sbit  MAX_RT  =sta^4;
+  40          
+  41          uint8_t eepromdata;
+  42          uint8_t uart_rx_buf[11],radio_rx_buf[11],uart_rx_num = 0;
+  43          uint8_t radio_tx_flag = 0,uart_tx_flag = 0;
+  44          
+  45          uint8_t i = 0;
+  46          
+  47          /**************************************************
+  48          ¹¦ÄÜ£ºÓ²¼þSPI¶ÁÐ´
+  49          **************************************************/
+  50          uint8_t SPI_RW(uint8_t value)
+  51          {
+  52   1          SPIRDAT = value;
+  53   1                                     
+C51 COMPILER V9.52.0.0   MAIN                                                              03/02/2016 17:09:11 PAGE 2   
+
+  54   1          while(!(SPIRSTAT & 0x02));            // µÈ´ýSPI´«ÊäÍê³É
+  55   1      
+  56   1          return SPIRDAT;                       // ·µ»Ø¶Á³öÖµ
+  57   1      }
+  58          /**************************************************
+  59          ¹¦ÄÜ£ºÐ´RF¼Ä´æÆ÷£¬¶ÁRF×´Ì¬Öµ
+  60          **************************************************/
+  61          uint8_t SPI_RW_Reg(uint8_t reg, uint8_t value)
+  62          {
+  63   1          uint8_t status;
+  64   1      
+  65   1          RFCSN = 0;                    
+  66   1          status = SPI_RW(reg);               // Ñ¡ÔñRF¼Ä´æÆ÷
+  67   1          SPI_RW(value);                      // Ð´ÈëÊý¾Ý
+  68   1          RFCSN = 1;                    
+  69   1      
+  70   1          return(status);                     // ·µ»ØRF×´Ì¬Öµ
+  71   1      }
+  72          /**************************************************
+  73          ¹¦ÄÜ£º¶ÁRF¼Ä´æÆ÷
+  74          **************************************************/
+  75          uint8_t SPI_Read(uint8_t reg)
+  76          {
+  77   1          uint8_t reg_val;
+  78   1      
+  79   1          RFCSN = 0;                      
+  80   1          SPI_RW(reg);                      // Ñ¡ÔñRF¼Ä´æÆ÷
+  81   1          reg_val = SPI_RW(0);              // ¶Á³öÊý¾Ý
+  82   1          RFCSN = 1;                      
+  83   1      
+  84   1          return(reg_val);                  // ·µ»ØRF×´Ì¬Öµ
+  85   1      }
+  86          /**************************************************
+  87          ¹¦ÄÜ£º°Ñ»º³åÇøµÄ¶à×Ö½ÚÊý¾ÝÐ´µ½RF¼Ä´æÆ÷
+  88          **************************************************/
+  89          uint8_t SPI_Write_Buf(uint8_t reg, uint8_t *pBuf, uint8_t bytes)
+  90          {
+  91   1          uint8_t status,byte_ctr;
+  92   1      
+  93   1          RFCSN = 0;                      
+  94   1          status = SPI_RW(reg);                           // Ñ¡ÔñRF¼Ä´æÆ÷
+  95   1          for(byte_ctr=0; byte_ctr<bytes; byte_ctr++)     // Á¬½ÓÐ´ÈëÊý¾Ý
+  96   1          SPI_RW(*pBuf++);
+  97   1          RFCSN = 1;                      
+  98   1          return(status);                                 // ·µ»ØRF×´Ì¬Öµ
+  99   1      }
+ 100          /**************************************************
+ 101          ¹¦ÄÜ£º¶ÁRF¼Ä´æÆ÷¶à×Ö½ÚÊý¾Ýµ½»º³åÇø
+ 102          **************************************************/
+ 103          uint8_t SPI_Read_Buf(uint8_t reg, uint8_t *pBuf, uint8_t bytes)
+ 104          {
+ 105   1        uint8_t status,byte_ctr;
+ 106   1      
+ 107   1          RFCSN = 0;                        
+ 108   1          status = SPI_RW(reg);                           // Ñ¡ÔñRF¼Ä´æÆ÷
+ 109   1      
+ 110   1          for(byte_ctr=0;byte_ctr<bytes;byte_ctr++)
+ 111   1            pBuf[byte_ctr] = SPI_RW(0);                   // Á¬½Ó¶Á³öÊý¾Ý
+ 112   1      
+ 113   1          RFCSN = 1;                          
+ 114   1      
+ 115   1          return(status);                                 // ·µ»ØRF×´Ì¬Öµ
+C51 COMPILER V9.52.0.0   MAIN                                                              03/02/2016 17:09:11 PAGE 3   
+
+ 116   1      }
+ 117          /**************************************************
+ 118          ¹¦ÄÜ£ºÉèÖÃÎªµôµçÄ£Ê½
+ 119          **************************************************/
+ 120          void PD_Mode(void)
+ 121          {
+ 122   1          RFCE=0;
+ 123   1          SPI_RW_Reg(WRITE_REG + CONFIG, 0x0c);           // PWR_UP=0
+ 124   1      }
+ 125          /**************************************************
+ 126          ¹¦ÄÜ£ºÉèÖÃÎª½ÓÊÕÄ£Ê½
+ 127          **************************************************/
+ 128          void RX_Mode(void)
+ 129          {
+ 130   1          RFCE=0;
+ 131   1          SPI_RW_Reg(WRITE_REG + CONFIG, 0x0f);         // ÉÏµç, CRCÎª2 bytes,½ÓÊÕÄ£Ê½,ÔÊÐíRX_DR²úÉúÖÐ¶Ï
+ 132   1          RFCE = 1;                                     // Æô¶¯½ÓÊÕÄ£Ê½
+ 133   1      }
+ 134          /**************************************************
+ 135          ¹¦ÄÜ£ºÉèÖÃÎª·¢ÉäÄ£Ê½
+ 136          **************************************************/
+ 137          void TX_Mode(uint8_t *rf_data,uint8_t num)
+ 138          {
+ 139   1          num = TX_PLOAD_WIDTH;
+ 140   1          SPI_RW_Reg(WRITE_REG + CONFIG, 0x0e);                               // ÉÏµç, CRCÎª2 bytes,½ÓÊÕÄ£Ê½,ÔÊÐíRX_DR²úÉúÖÐ¶Ï
+ 141   1          SPI_Write_Buf(WR_TX_PLOAD, rf_data, TX_PLOAD_WIDTH);                // Ð´Êý¾Ýµ½FIFO
+ 142   1          RFCE=1;                                                             // Æô¶¯·¢Éä
+ 143   1          delay_us(15);                                                       // ·¢ÉäÂö³å
+ 144   1          RFCE=0;                       
+ 145   1      }
+ 146          /**************************************************
+ 147          ¹¦ÄÜ£ºRF³õÊ¼»¯
+ 148          **************************************************/
+ 149          void rf_init(void)
+ 150          {
+ 151   1          RFCE = 0;                                                         // RF¹Ø±Õ
+ 152   1          RFCKEN = 1;                                                       // Æô¶¯RFÊ±ÖÓ
+ 153   1          RF = 1;                                                           // ÔÊÐíRFÖÐ¶Ï
+ 154   1      
+ 155   1          delay_ms(10);
+ 156   1      
+ 157   1          SPI_Write_Buf(WRITE_REG + TX_ADDR, TX_ADDRESS, TX_ADR_WIDTH);     // ÉèÖÃ·¢ÉäµØÖ·³¤¶È
+ 158   1          SPI_Write_Buf(WRITE_REG + RX_ADDR_P0, TX_ADDRESS, TX_ADR_WIDTH);  // ÉèÖÃ½ÓÊÕµØÖ·³¤¶È
+ 159   1      
+ 160   1          SPI_RW_Reg(WRITE_REG + EN_AA, 0x01);                              // Æô¶¯×Ô¶¯Ó¦´ð¹¦ÄÜ
+ 161   1          SPI_RW_Reg(WRITE_REG + EN_RXADDR, 0x01);                          // PIPE0½ÓÊÕÊý¾Ý
+ 162   1          SPI_RW_Reg(WRITE_REG + SETUP_RETR, 0x1a);                         // ×Ô¶¯ÖØ´«10´Î
+ 163   1          SPI_RW_Reg(WRITE_REG + RF_CH, 40);                                // RFÆµÂÊ2440MHz
+ 164   1          SPI_RW_Reg(WRITE_REG + RF_SETUP, 0x0f);                           // ·¢Éä¹¦ÂÊ0dBm, ´«ÊäËÙÂÊ2Mbps,
+ 165   1          SPI_RW_Reg(WRITE_REG + RX_PW_P0, TX_PLOAD_WIDTH);                 // PIPE0 ½ÓÊÕÊý¾Ý°ü³¤¶È     
+ 166   1      }
+ 167          /**************************************************
+ 168          ¹¦ÄÜ£º´®¿Ú³õÊ¼»¯×Ó³ÌÐò
+ 169          ËµÃ÷£º²¨ÌØÂÊ19.2K£¬Ê¹ÓÃÄÚ²¿²¨ÌØÂÊ·¢ÉúÆ÷
+ 170          **************************************************/
+ 171          void uart_init(void)
+ 172          {
+ 173   1          ES0 = 0;                              // ¹ØUART0ÖÐ¶Ï
+ 174   1          REN0 = 1;                             // ÔÊÐí½ÓÊÕ
+ 175   1          SM0 = 0;                              // ´®¿ÚÄ£Ê½1£¬8bit¿É±ä²¨ÌØÂÊ
+ 176   1          SM1 = 1;                   
+ 177   1          PCON |= 0x80;                         // SMOD = 1
+C51 COMPILER V9.52.0.0   MAIN                                                              03/02/2016 17:09:11 PAGE 4   
+
+ 178   1          ADCON |= 0x80;                        // Ñ¡ÔñÄÚ²¿²¨ÌØÂÊ·¢ÉúÆ÷
+ 179   1      
+ 180   1          S0RELL = 0xe6;                        // ²¨ÌØÂÊ19.2K(Ê®½øÖÆ998=Ê®Áù½øÖÆ0x03e6)
+ 181   1          S0RELH = 0x03;
+ 182   1          TI0 = 0;                              // Çå·¢ËÍÍê³É±êÖ¾
+ 183   1          S0BUF=0x99;                           // ËÍ³õÖµ
+ 184   1      }
+ 185          /**************************************************
+ 186          ¹¦ÄÜ£ºÏò´®¿Ú·¢ËÍ1 byteÊý¾Ý
+ 187          **************************************************/
+ 188          void uart_putchar(uint8_t x)
+ 189          {
+ 190   1          while (!TI0);                           // µÈ´ý·¢ËÍÍê³É
+ 191   1          TI0=0;                                  // Çå·¢ËÍÍê³É±êÖ¾
+ 192   1          S0BUF=x;                                // ·¢ËÍÊý¾Ý
+ 193   1      }
+ 194          /**************************************************
+ 195          ¹¦ÄÜ:I/O¿Ú³õÊ¼»¯
+ 196          **************************************************/
+ 197          void io_init(void)
+ 198          {
+ 199   1          P0DIR = 0xf0;                 // Éè¶¨I/O¿ÚÊäÈëÊä³ö
+ 200   1          P1DIR = 0xff;                          
+ 201   1      } 
+ 202          /**************************************************
+ 203          ¹¦ÄÜ:LEDÅäÖÃ£¬LED9
+ 204          **************************************************/
+ 205          void led_init()
+ 206          {
+ 207   1        P0DIR &= 0xBF;        //P06 out
+ 208   1        LED9 = 1;
+ 209   1      }
+ 210          /**************************************************
+ 211          ¹¦ÄÜ£ºuartÖÐ¶Ï·þÎñ³ÌÐò
+ 212          **************************************************/
+ 213          //void UART_IRQ(void) interrupt INTERRUPT_UART0
+ 214          //{
+ 215          //    char tmp;
+ 216          //  
+ 217          ////    LED9 = !LED9;
+ 218          //    if (RI0 == 1)
+ 219          //    {
+ 220          //      RI0 = 0;
+ 221          //      tmp = S0BUF;    
+ 222          //      if(tmp == '\n' && uart_rx_num == 10)
+ 223          ////      if(uart_rx_num == 8)
+ 224          //      {
+ 225          //        radio_tx_flag = 1;
+ 226          ////        LED9 = !LED9;
+ 227          //      }
+ 228          ////      else
+ 229          ////      {
+ 230          ////          
+ 231          ////      }
+ 232          //      uart_rx_buf[uart_rx_num++] = S0BUF;
+ 233          //    }     
+ 234          //}
+ 235          
+ 236          void UART_IRQ(void) interrupt INTERRUPT_UART0
+ 237          {
+ 238   1      //    LED9 = !LED9;
+ 239   1          if (RI0 == 1)
+C51 COMPILER V9.52.0.0   MAIN                                                              03/02/2016 17:09:11 PAGE 5   
+
+ 240   1          {
+ 241   2            RI0 = 0;
+ 242   2            uart_rx_buf[uart_rx_num++] = S0BUF;     
+ 243   2            if(uart_rx_num == 11)
+ 244   2            {
+ 245   3              radio_tx_flag = 1;
+ 246   3            }
+ 247   2          }     
+ 248   1      }
+ 249          /**************************************************
+ 250          ¹¦ÄÜ£ºRFÖÐ¶Ï·þÎñ³ÌÐò
+ 251          **************************************************/
+ 252          void RF_IRQ(void) interrupt INTERRUPT_RFIRQ
+ 253          {
+ 254   1          sta=SPI_Read(STATUS);                                         // ¶Á³ö×´Ì¬Öµ
+ 255   1        
+ 256   1      //    LED9 = !LED9;
+ 257   1          if(RX_DR)                 
+ 258   1          {
+ 259   2            RFCE=0;                                                     //¹Ø±ÕRF,½øÈë´ý»úÄ£Ê½
+ 260   2            SPI_Read_Buf(RD_RX_PLOAD,radio_rx_buf,TX_PLOAD_WIDTH);      // ¶Á³öFIFOµÄÊý¾Ý
+ 261   2            SPI_RW_Reg(FLUSH_RX,0);                                     // Çå³ýRXµÄFIFO
+ 262   2            
+ 263   2            uart_tx_flag = 1;
+ 264   2          }
+ 265   1          
+ 266   1          if(MAX_RT)
+ 267   1        {
+ 268   2            SPI_RW_Reg(FLUSH_TX,0);             // Çå³ýTXµÄFIFO !!!´ïµ½×î´óÖØ´«´ÎÊý£¬Çå¿ÕTX¡ª¡ªbuffer£¬È·±£²»»áPID¼ÓÒ»ºó£
+             -¬±»¼ÌÐø·¢ËÍ
+ 269   2        }
+ 270   1        
+ 271   1          SPI_RW_Reg(WRITE_REG+STATUS,0x70);                            // Çå³ýËùÓÐÖÐ¶Ï±êÖ¾ 
+ 272   1      }
+ 273          /**************************************************
+ 274          ¹¦ÄÜ£ºÖ÷³ÌÐò
+ 275          **************************************************/
+ 276          void main(void)
+ 277          {
+ 278   1          rf_init();                                        // RF³õÊ¼»¯ 
+ 279   1          uart_init();                                      // uart³õÊ¼»¯
+ 280   1          io_init();                      
+ 281   1          led_init();
+ 282   1          ES0 = 1;
+ 283   1          EA=1;
+ 284   1      
+ 285   1          while(1)
+ 286   1          {
+ 287   2            if(radio_tx_flag)
+ 288   2            {
+ 289   3              if(uart_rx_buf[9] == 0x0d && uart_rx_buf[10] == 0x0a)
+ 290   3              {
+ 291   4      //            uart_putchar(0x01);
+ 292   4                  RFCE=0;                                   //¹Ø±ÕRF
+ 293   4                  TX_Mode(uart_rx_buf,9);                   // ·¢ÉäÊý¾Ý
+ 294   4                  while (!(TX_DS|MAX_RT));                  // µÈ´ý·¢Éä½áÊø
+ 295   4                  sta = 0;
+ 296   4                  PD_Mode();                                // ¹ØRF
+ 297   4                  LED9 = !LED9;
+ 298   4                  radio_tx_flag = 0;
+ 299   4              
+ 300   4                  for(i = 0;i < 11;i++)
+C51 COMPILER V9.52.0.0   MAIN                                                              03/02/2016 17:09:11 PAGE 6   
+
+ 301   4                  {
+ 302   5                  uart_rx_buf[i] = '\0';
+ 303   5                  }
+ 304   4                  uart_rx_num = 0;
+ 305   4            
+ 306   4                  RX_Mode();                                //½øÈë½ÓÊÕÄ£Ê½
+ 307   4                
+ 308   4              }
+ 309   3              else
+ 310   3              {
+ 311   4                  uart_putchar(0xff);
+ 312   4                
+ 313   4      //            uart_putchar(uart_rx_buf[0]);
+ 314   4      //            uart_putchar(uart_rx_buf[1]);
+ 315   4      //            uart_putchar(uart_rx_buf[2]);
+ 316   4      //            uart_putchar(uart_rx_buf[3]);
+ 317   4      //            uart_putchar(uart_rx_buf[4]);
+ 318   4      //            uart_putchar(uart_rx_buf[5]);
+ 319   4      //            uart_putchar(uart_rx_buf[6]);
+ 320   4      //            uart_putchar(uart_rx_buf[7]);
+ 321   4      //            uart_putchar(uart_rx_buf[8]);
+ 322   4                
+ 323   4                  uart_putchar(0x0d);                       //\r
+ 324   4                  uart_putchar(0x0a);                       //\n
+ 325   4                  for(i = 0;i < 11;i++)
+ 326   4                  {
+ 327   5                      uart_rx_buf[i] = '\0';
+ 328   5                  }
+ 329   4                  uart_rx_num = 0;
+ 330   4                  radio_tx_flag = 0;
+ 331   4              }
+ 332   3              
+ 333   3          }
+ 334   2              
+ 335   2            
+ 336   2          if(RX_DR)
+ 337   2          {
+ 338   3              sta = 0;
+ 339   3      //        LED9 = !LED9;
+ 340   3      //      RFCE=0;                                       //¹Ø±ÕRF
+ 341   3              if(radio_rx_buf[5] == tag_key[1] && radio_rx_buf[7] == tag_key[3])
+ 342   3              {
+ 343   4                  uart_putchar(radio_rx_buf[0]);
+ 344   4                  uart_putchar(radio_rx_buf[1]);
+ 345   4                  uart_putchar(radio_rx_buf[2]);
+ 346   4                  uart_putchar(radio_rx_buf[3]);
+ 347   4      //          uart_putchar(radio_rx_buf[4]);
+ 348   4      //          uart_putchar(radio_rx_buf[5]);
+ 349   4      //          uart_putchar(radio_rx_buf[6]);
+ 350   4      //          uart_putchar(radio_rx_buf[7]);
+ 351   4      //          uart_putchar(radio_rx_buf[8]);
+ 352   4                  uart_putchar(0x0d);                       //\r
+ 353   4                  uart_putchar(0x0a);                       //\n
+ 354   4              }
+ 355   3              
+ 356   3              for(i = 0;i < 11;i++)
+ 357   3              {
+ 358   4                  radio_rx_buf[i] = '\0';
+ 359   4              }
+ 360   3          }
+ 361   2                  
+ 362   2        }
+C51 COMPILER V9.52.0.0   MAIN                                                              03/02/2016 17:09:11 PAGE 7   
+
+ 363   1      }                     
+ 364          
+ 365          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    723    ----
+   CONSTANT SIZE    =   ----    ----
+   XDATA SIZE       =   ----    ----
+   PDATA SIZE       =     42      10
+   DATA SIZE        =     10    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+   EDATA SIZE       =   ----    ----
+   HDATA SIZE       =   ----    ----
+   XDATA CONST SIZE =   ----    ----
+   FAR CONST SIZE   =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
